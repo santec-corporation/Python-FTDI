@@ -22,9 +22,9 @@ for dev in devices:
     print(dev.SerialNumber)
 
 """ TSL instrument control below """
-# tsl = ftd2.FTD2XXHelper("23110067")
-# print(tsl.QueryIdn())
-# print(tsl)
+tsl = ftd2.FTD2XXHelper("23110067")
+print(tsl.QueryIdn())
+print(tsl)
 
 """ Perform sweep operation (TSL-570) (SCPI commands)"""
 # opc = tsl.Query('*OPC?')
