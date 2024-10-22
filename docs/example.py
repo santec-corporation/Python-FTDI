@@ -13,7 +13,7 @@ import ftd2xxhelper as ftd2
 
 
 """ Example Usage """
-devices = ftd2.FTD2XXHelper.ListDevices()
+devices = ftd2.Ftd2xxhelper.list_devices()
 print(devices)
 
 for dev in devices:
@@ -22,8 +22,8 @@ for dev in devices:
     print(dev.SerialNumber)
 
 """ TSL instrument control below """
-tsl = ftd2.FTD2XXHelper("23110067")
-print(tsl.QueryIdn())
+tsl = ftd2.Ftd2xxhelper("23110067")
+print(tsl.query_idn())
 print(tsl)
 
 """ Perform sweep operation (TSL-570) (SCPI commands)"""
@@ -47,7 +47,7 @@ print(tsl)
 
 """ TSL test commands (TSL-550) (Santec commands)"""
 # for tsl in devices:
-#     helper = ftd2.FTD2XXHelper(tsl.SerialNumber)
+#     helper = ftd2.Ftd2xxhelper(tsl.SerialNumber)
 #
 #     helper.Query("*RST")
 #     helper.Query("*CLS")

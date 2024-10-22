@@ -1,21 +1,16 @@
 # -*- coding: utf-8 -*-
 # !/usr/bin/env python
 
-"""
-Santec Python FTDI
-Script to control Santec instruments via USB.
-
-@organization: santec holdings corp.
-"""
-
 import sys
 import time
 import ctypes
 import struct
 import string
+from ctypes import Array
+from typing import List, Any
 
 
-class FT_Node(ctypes.Structure):
+class FtNode(ctypes.Structure):
     _fields_ = [
         ("Flags", ctypes.c_uint32),
         ("Type", ctypes.c_uint32),
@@ -27,7 +22,7 @@ class FT_Node(ctypes.Structure):
     ]
 
 
-class FT_Program_Data(ctypes.Structure):
+class FtProgramData(ctypes.Structure):
     _fields_ = [
         ("Signature1", ctypes.c_uint32),
         ("Signature2", ctypes.c_uint32),
@@ -45,10 +40,12 @@ class FT_Program_Data(ctypes.Structure):
     ]
 
 
-class FTD2XXHelper(object):
+class Ftd2xxhelper(object):
     terminator = "\r"
 
     def __init__(self, serialNumber: str | bytes | None = None):
+        self.__SelectedDeviceNode = None
+        self.lastConnectedSerialNumber = None
         self.ftHandle = None
         self.numDevices = None
         self.ftdiDeviceList = None
@@ -89,7 +86,7 @@ class FTD2XXHelper(object):
             raise IOError("Error: (status %d: %s)" % (f, names[f]))
 
     @staticmethod
-    def ListDevices():
+    def list_devices():
         d2xx = None
         if sys.platform.startswith("linux"):
             d2xx = ctypes.cdll.LoadLibrary("libft2xx.so")
@@ -100,20 +97,20 @@ class FTD2XXHelper(object):
         if d2xx is None:
             return []
         numDevs = ctypes.c_long()
-        FTD2XXHelper.__check(d2xx.FT_CreateDeviceInfoList(ctypes.byref(numDevs)))
+        Ftd2xxhelper.__check(d2xx.FT_CreateDeviceInfoList(ctypes.byref(numDevs)))
         ftdiDeviceList = []
         if numDevs.value > 0:
-            t_devices = FT_Node * numDevs.value
+            t_devices = FtNode * numDevs.value
             devices = t_devices()
-            FTD2XXHelper.__check(
+            Ftd2xxhelper.__check(
                 d2xx.FT_GetDeviceInfoList(devices, ctypes.byref(numDevs))
             )
             for device in devices:
                 ftHandle = ctypes.c_void_p()
-                FTD2XXHelper.__check(
+                Ftd2xxhelper.__check(
                     d2xx.FT_OpenEx(device.SerialNumber, 1, ctypes.byref(ftHandle))
                 )
-                eeprom = FT_Program_Data()
+                eeprom = FtProgramData()
                 eeprom.Signature1 = 0x00000000
                 eeprom.Signature2 = 0xFFFFFFFF
                 eeprom.Version = 2
@@ -122,7 +119,7 @@ class FTD2XXHelper(object):
                 eeprom.Description = ctypes.create_string_buffer(64)
                 eeprom.SerialNumber = ctypes.create_string_buffer(16)
                 try:
-                    FTD2XXHelper.__check(
+                    Ftd2xxhelper.__check(
                         d2xx.FT_EE_Read(ftHandle, ctypes.byref(eeprom))
                     )
                     manufacturer = ctypes.cast(eeprom.Manufacturer, ctypes.c_char_p)
@@ -134,14 +131,14 @@ class FTD2XXHelper(object):
         else:
             return []
 
-    def getDevInfoList(self) -> ctypes.Array[FT_Node]:
+    def get_dev_info_list(self) -> Array[FtNode] | list[Any]:
         numDevs = ctypes.c_long()
-        FTD2XXHelper.__check(self.d2xx.FT_CreateDeviceInfoList(ctypes.byref(numDevs)))
+        Ftd2xxhelper.__check(self.d2xx.FT_CreateDeviceInfoList(ctypes.byref(numDevs)))
         self.numDevices = numDevs.value
         if numDevs.value > 0:
-            t_devices = FT_Node * numDevs.value
+            t_devices = FtNode * numDevs.value
             devices = t_devices()
-            FTD2XXHelper.__check(
+            Ftd2xxhelper.__check(
                 self.d2xx.FT_GetDeviceInfoList(devices, ctypes.byref(numDevs))
             )
             self.ftdiDeviceList = devices
@@ -149,11 +146,11 @@ class FTD2XXHelper(object):
         else:
             return []
 
-    def EEPROMData(self):
+    def eeprom_data(self):
         if self.__SelectedDeviceNode is None:
             return None
 
-        eeprom = FT_Program_Data()
+        eeprom = FtProgramData()
         eeprom.Signature1 = 0x00000000
         eeprom.Signature2 = 0xFFFFFFFF
         eeprom.Version = 2
@@ -163,7 +160,7 @@ class FTD2XXHelper(object):
         eeprom.SerialNumber = ctypes.create_string_buffer(16)
 
         try:
-            FTD2XXHelper.__check(
+            Ftd2xxhelper.__check(
                 self.d2xx.FT_EE_Read(self.ftHandle, ctypes.byref(eeprom))
             )
             return eeprom
@@ -171,7 +168,7 @@ class FTD2XXHelper(object):
             return None
 
     def initialize(self, serialNumber: str | bytes | None = None):
-        devs = self.getDevInfoList()
+        devs = self.get_dev_info_list()
 
         self.__SelectedDeviceNode = None
         self.lastConnectedSerialNumber = None
@@ -196,13 +193,13 @@ class FTD2XXHelper(object):
                 raise ValueError("Failed to find Santec instruments")
             raise ValueError(f"Failed to open device by serial number '{serialNumber}'")
         self.ftHandle = ctypes.c_void_p()
-        FTD2XXHelper.__check(
+        Ftd2xxhelper.__check(
             self.d2xx.FT_OpenEx(
                 self.lastConnectedSerialNumber, 1, ctypes.byref(self.ftHandle)
             )
         )
 
-        eeprom = self.EEPROMData()
+        eeprom = self.eeprom_data()
         if eeprom is None:
             raise RuntimeError(
                 f"Failed to retrieve EEPROM data from the device (SN: {self.lastConnectedSerialNumber}, Description: {self.__SelectedDeviceNode.Description})"
@@ -212,40 +209,40 @@ class FTD2XXHelper(object):
             self.__initialize()
 
     def __initialize(self):
-        wordlen = ctypes.c_ubyte(8)
-        stopbits = ctypes.c_ubyte(0)
+        word_len = ctypes.c_ubyte(8)
+        stop_bits = ctypes.c_ubyte(0)
         parity = ctypes.c_ubyte(0)
-        FTD2XXHelper.__check(
+        Ftd2xxhelper.__check(
             self.d2xx.FT_SetDataCharacteristics(
-                self.ftHandle, wordlen, stopbits, parity
+                self.ftHandle, word_len, stop_bits, parity
             )
         )
         flowControl = ctypes.c_uint16(0x00)
         xon = ctypes.c_ubyte(17)
-        xoff = ctypes.c_ubyte(19)
-        FTD2XXHelper.__check(
-            self.d2xx.FT_SetFlowControl(self.ftHandle, flowControl, xon, xoff)
+        x_off = ctypes.c_ubyte(19)
+        Ftd2xxhelper.__check(
+            self.d2xx.FT_SetFlowControl(self.ftHandle, flowControl, xon, x_off)
         )
-        baudrate = ctypes.c_uint64(9600)
-        FTD2XXHelper.__check(self.d2xx.FT_SetBaudRate(self.ftHandle, baudrate))
+        baud_rate = ctypes.c_uint64(9600)
+        Ftd2xxhelper.__check(self.d2xx.FT_SetBaudRate(self.ftHandle, baud_rate))
         timeout = ctypes.c_uint64(1000)
-        FTD2XXHelper.__check(self.d2xx.FT_SetTimeouts(self.ftHandle, timeout, timeout))
+        Ftd2xxhelper.__check(self.d2xx.FT_SetTimeouts(self.ftHandle, timeout, timeout))
         mask = ctypes.c_ubyte(0x00)
         enable = ctypes.c_ubyte(0x40)
-        FTD2XXHelper.__check(self.d2xx.FT_SetBitMode(self.ftHandle, mask, enable))
+        Ftd2xxhelper.__check(self.d2xx.FT_SetBitMode(self.ftHandle, mask, enable))
 
-    def OpenUsbConnection(self):
+    def open_usb_connection(self):
         self.initialize()
 
-    def CloseUsbConnection(self):
+    def close_usb_connection(self):
         if self.ftHandle is not None:
             self.d2xx.FT_Close(self.ftHandle)
             self.ftHandle = None
 
-    def Disconnect(self):
-        self.CloseUsbConnection()
+    def disconnect(self):
+        self.close_usb_connection()
 
-    def Write(self, command: str):
+    def write(self, command: str):
         try:
             idx = command.index(self.terminator)
             if idx == 0:
@@ -259,7 +256,7 @@ class FTD2XXHelper(object):
 
         if self.ftHandle is None:
             self.ftHandle = ctypes.c_void_p()
-            FTD2XXHelper.__check(
+            Ftd2xxhelper.__check(
                 self.d2xx.FT_OpenEx(
                     self.lastConnectedSerialNumber, 1, ctypes.byref(self.ftHandle)
                 )
@@ -268,15 +265,15 @@ class FTD2XXHelper(object):
         written = ctypes.c_uint()
         commandLen = len(command)
         cmd = (ctypes.c_ubyte * commandLen).from_buffer_copy(command.encode("ascii"))
-        FTD2XXHelper.__check(
+        Ftd2xxhelper.__check(
             self.d2xx.FT_Write(self.ftHandle, cmd, commandLen, ctypes.byref(written))
         )
         time.sleep(0.020)
 
-    def Read(self, maxTimeToWait: float = 0.020, totalNumberOfBytesToRead: int = 0):
+    def read(self, maxTimeToWait: float = 0.020, totalNumberOfBytesToRead: int = 0):
         if self.ftHandle is None:
             self.ftHandle = ctypes.c_void_p()
-            FTD2XXHelper.__check(
+            Ftd2xxhelper.__check(
                 self.d2xx.FT_OpenEx(
                     self.lastConnectedSerialNumber, 1, ctypes.byref(self.ftHandle)
                 )
@@ -293,7 +290,7 @@ class FTD2XXHelper(object):
             available = ctypes.c_uint()
             timeCounter += sleepTimer
             time.sleep(sleepTimer)
-            FTD2XXHelper.__check(
+            Ftd2xxhelper.__check(
                 self.d2xx.FT_GetQueueStatus(self.ftHandle, ctypes.byref(available))
             )
             if available.value > 0:
@@ -304,7 +301,7 @@ class FTD2XXHelper(object):
                 else:
                     continue
             arr = (ctypes.c_ubyte * available.value)()
-            FTD2XXHelper.__check(
+            Ftd2xxhelper.__check(
                 self.d2xx.FT_Read(
                     self.ftHandle, arr, available, ctypes.byref(bytesRead)
                 )
@@ -320,38 +317,38 @@ class FTD2XXHelper(object):
             ):
                 break
 
-        self.CloseUsbConnection()
+        self.close_usb_connection()
         return binaryData
 
-    def QueryIdn(self):
-        return self.Query("*IDN?")
+    def query_idn(self):
+        return self.query("*IDN?")
 
-    def Query(self, command: str, waitTime: int = 1):
+    def query(self, command: str, waitTime: int = 1):
         if self.ftHandle is None:
             self.ftHandle = ctypes.c_void_p()
-            FTD2XXHelper.__check(
+            Ftd2xxhelper.__check(
                 self.d2xx.FT_OpenEx(
                     self.lastConnectedSerialNumber, 1, ctypes.byref(self.ftHandle)
                 )
             )
 
-        self.Write(command)
+        self.write(command)
 
-        arr = self.Read(waitTime)
+        arr = self.read(waitTime)
 
-        string = ""
+        response_str = ""
         try:
-            string = arr.decode("ascii")
+            response_str = arr.decode("ascii")
         except UnicodeDecodeError:
             print(arr)
-            return string
+            return response_str
 
-        if len(string) < 3:
-            return string.strip()
-        elif string[0] == "\0":
-            return string
+        if len(response_str) < 3:
+            return response_str.strip()
+        elif response_str[0] == "\0":
+            return response_str
 
-        trimmed = self.__RemovePrefixFromResultIfNotHex(string.strip())
+        trimmed = self.__remove_prefix_from_result_if_not_hex(response_str.strip())
 
         try:
             idx = trimmed.rindex(self.terminator)
@@ -360,36 +357,36 @@ class FTD2XXHelper(object):
         except ValueError:
             pass
 
-        if trimmed == string.strip():
+        if trimmed == response_str.strip():
             return trimmed
 
-        return string
+        return response_str
 
     @staticmethod
-    def __RemovePrefixFromResultIfNotHex(self, string: str):
-        if string is None or len(string) < 3:
-            return string
+    def __remove_prefix_from_result_if_not_hex(result_str: str):
+        if result_str is None or len(result_str) < 3:
+            return result_str
 
-        if string[0] == "\0":
-            return string
+        if result_str[0] == "\0":
+            return result_str
 
-        if string[0] not in string.hexdigits or string[1] not in string.hexdigits:
-            return string[2:]
+        if result_str[0] not in result_str.hexdigits or result_str[1] not in result_str.hexdigits:
+            return result_str[2:]
 
-        return string
+        return result_str
 
-    def GetAllDatPointsFromLastScan_SCPICommand(self):
+    def get_all_dat_points_from_last_scan_scpi_command(self):
         getCountCommand = "READout:POINts?"
         getDataCommand = "READout:DATa?"
 
         points = 0
-        str = self.Query(getCountCommand)
-        print(str)
+        response_str = self.query(getCountCommand)
+        print(response_str)
         try:
-            points = int(str)
+            points = int(response_str)
         except ValueError:
             raise RuntimeError(
-                f"Failed to retrieve a valid number of data points from the last scan: {str}"
+                f"Failed to retrieve a valid number of data points from the last scan: {response_str}"
             )
 
         if points > 200001:
@@ -397,9 +394,9 @@ class FTD2XXHelper(object):
                 f"The number of data points received from the last scan is too large: {points}"
             )
 
-        self.Write(getDataCommand)
+        self.write(getDataCommand)
         time.sleep(5)
-        arr = self.Read(1, points * 4)
+        arr = self.read(1, points * 4)
         if len(arr) == 0:
             return arr
 
@@ -412,37 +409,37 @@ class FTD2XXHelper(object):
         b = chr(arr[1])
         try:
             val = int(b)
-        except:
+        except Exception as e:
             print(arr[1], b)
             raise ValueError(
-                f"The value read was supposed to contain a number as the second byte, but contained '{b}'"
+                f"The value read was supposed to contain a number as the second byte, but contained '{b}', {e}"
             )
 
         b = "".join(map(chr, arr[2: 2 + val]))
         try:
             num = int(b)
-        except:
+        except Exception as e:
             print(arr[2: 2 + val], b)
             raise ValueError(
-                f"The value read was supposed to contain a number, but contained '{b}'"
+                f"The value read was supposed to contain a number, but contained '{b}', {e}"
             )
 
         offset = 2 + val
         return list(
             map(
                 lambda x: struct.unpack(">f", x),
-                FTD2XXHelper.__chunks(arr[offset:], num, 4),
+                Ftd2xxhelper.__chunks(arr[offset:], num, 4),
             )
         )
 
-    def GetAllDataPointsFromLastScan_SantecCommand(self):
+    def get_all_data_points_from_last_scan_santec_command(self):
         getCountCommand = "TN"
         getDataCommand = "TA"
 
-        points = int(self.Query(getCountCommand))
+        points = int(self.query(getCountCommand))
 
-        self.Write(getDataCommand)
-        arr = self.Read(1, points * 4)
+        self.write(getDataCommand)
+        arr = self.read(1, points * 4)
 
         if len(arr) != points * 4:
             raise ValueError(
@@ -459,7 +456,7 @@ class FTD2XXHelper(object):
         return list(
             map(
                 lambda x: int.from_bytes(x, "big"),
-                FTD2XXHelper.__chunks(arr, points, 4),
+                Ftd2xxhelper.__chunks(arr, points, 4),
             )
         )
 
