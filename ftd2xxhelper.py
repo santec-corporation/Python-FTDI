@@ -43,21 +43,37 @@ class FtProgramData(ctypes.Structure):
 class Ftd2xxhelper(object):
     terminator = "\r"
 
-    def __init__(self, serialNumber: str | bytes | None = None):
-        self.__SelectedDeviceNode = None
-        self.lastConnectedSerialNumber = None
-        self.ftHandle = None
-        self.numDevices = None
-        self.ftdiDeviceList = None
+    __slots__ = [
+        "_selected_device_node",
+        "_last_connected_serial_number",
+        "_ft_handle",
+        "_num_devices",
+        "_ftdi_device_list",
+        "_d2xx"
+    ]
 
-        if sys.platform.startswith("linux"):
-            self.d2xx = ctypes.cdll.LoadLibrary("libft2xx.so")
-        elif sys.platform.startswith("darwin"):
-            self.d2xx = ctypes.cdll.LoadLibrary("libftd2xx.dylib")
-        else:
-            self.d2xx = ctypes.windll.LoadLibrary("ftd2xx")
+    def __init__(self, serial_number: str | bytes | None = None):
+        self._selected_device_node = None
+        self._last_connected_serial_number = None
+        self._ft_handle = None
+        self._num_devices = None
+        self._ftdi_device_list = None
+        self._d2xx = None
 
-        self.initialize(serialNumber)
+        self.load_library()
+        if serial_number is not None:
+            self.initialize(serial_number)
+
+    def load_library(self):
+        try:
+            if sys.platform.startswith("linux"):
+                self._d2xx = ctypes.cdll.LoadLibrary("libftd2xx.so")
+            elif sys.platform.startswith("darwin"):
+                self._d2xx = ctypes.cdll.LoadLibrary("libftd2xx.dylib")
+            else:
+                self._d2xx = ctypes.windll.LoadLibrary("ftd2xx")
+        except OSError as e:
+            raise RuntimeError(f"Failed to load FTDI library: {e}")
 
     @staticmethod
     def __check(f):
@@ -133,21 +149,21 @@ class Ftd2xxhelper(object):
 
     def get_dev_info_list(self) -> Array[FtNode] | list[Any]:
         numDevs = ctypes.c_long()
-        Ftd2xxhelper.__check(self.d2xx.FT_CreateDeviceInfoList(ctypes.byref(numDevs)))
-        self.numDevices = numDevs.value
+        Ftd2xxhelper.__check(self._d2xx.FT_CreateDeviceInfoList(ctypes.byref(numDevs)))
+        self._num_devices = numDevs.value
         if numDevs.value > 0:
             t_devices = FtNode * numDevs.value
             devices = t_devices()
             Ftd2xxhelper.__check(
-                self.d2xx.FT_GetDeviceInfoList(devices, ctypes.byref(numDevs))
+                self._d2xx.FT_GetDeviceInfoList(devices, ctypes.byref(numDevs))
             )
-            self.ftdiDeviceList = devices
+            self._ftdi_device_list = devices
             return devices
         else:
             return []
 
     def eeprom_data(self):
-        if self.__SelectedDeviceNode is None:
+        if self._selected_device_node is None:
             return None
 
         eeprom = FtProgramData()
@@ -161,7 +177,7 @@ class Ftd2xxhelper(object):
 
         try:
             Ftd2xxhelper.__check(
-                self.d2xx.FT_EE_Read(self.ftHandle, ctypes.byref(eeprom))
+                self._d2xx.FT_EE_Read(self._ft_handle, ctypes.byref(eeprom))
             )
             return eeprom
         except:
@@ -170,14 +186,15 @@ class Ftd2xxhelper(object):
     def initialize(self, serialNumber: str | bytes | None = None):
         devs = self.get_dev_info_list()
 
-        self.__SelectedDeviceNode = None
-        self.lastConnectedSerialNumber = None
+        self._selected_device_node = None
+        self._last_connected_serial_number = None
+
 
         if serialNumber is None:
             for dev in devs:
-                if dev.Description.decode("ascii").startswith("TSL"):
-                    self.__SelectedDeviceNode = dev
-                    self.lastConnectedSerialNumber = dev.SerialNumber
+                if dev.Description.decode("ascii").startswith("SANTEC"):
+                    self._selected_device_node = dev
+                    self._last_connected_serial_number = dev.SerialNumber
                     break
         else:
             for dev in devs:
@@ -185,24 +202,24 @@ class Ftd2xxhelper(object):
                         dev.SerialNumber == serialNumber
                         or dev.SerialNumber.decode("ascii") == serialNumber
                 ):
-                    self.__SelectedDeviceNode = dev
-                    self.lastConnectedSerialNumber = dev.SerialNumber
+                    self._selected_device_node = dev
+                    self._last_connected_serial_number = dev.SerialNumber
                     break
-        if self.__SelectedDeviceNode is None:
+        if self._selected_device_node is None:
             if serialNumber is None:
                 raise ValueError("Failed to find Santec instruments")
             raise ValueError(f"Failed to open device by serial number '{serialNumber}'")
-        self.ftHandle = ctypes.c_void_p()
+        self._ft_handle = ctypes.c_void_p()
         Ftd2xxhelper.__check(
-            self.d2xx.FT_OpenEx(
-                self.lastConnectedSerialNumber, 1, ctypes.byref(self.ftHandle)
+            self._d2xx.FT_OpenEx(
+                self._last_connected_serial_number, 1, ctypes.byref(self._ft_handle)
             )
         )
 
         eeprom = self.eeprom_data()
         if eeprom is None:
             raise RuntimeError(
-                f"Failed to retrieve EEPROM data from the device (SN: {self.lastConnectedSerialNumber}, Description: {self.__SelectedDeviceNode.Description})"
+                f"Failed to retrieve EEPROM data from the device (SN: {self._last_connected_serial_number}, Description: {self._selected_device_node.Description})"
             )
         manufacturer = ctypes.cast(eeprom.Manufacturer, ctypes.c_char_p)
         if manufacturer.value.decode("ascii").upper() == "SANTEC":
@@ -213,31 +230,31 @@ class Ftd2xxhelper(object):
         stop_bits = ctypes.c_ubyte(0)
         parity = ctypes.c_ubyte(0)
         Ftd2xxhelper.__check(
-            self.d2xx.FT_SetDataCharacteristics(
-                self.ftHandle, word_len, stop_bits, parity
+            self._d2xx.FT_SetDataCharacteristics(
+                self._ft_handle, word_len, stop_bits, parity
             )
         )
         flowControl = ctypes.c_uint16(0x00)
         xon = ctypes.c_ubyte(17)
         x_off = ctypes.c_ubyte(19)
         Ftd2xxhelper.__check(
-            self.d2xx.FT_SetFlowControl(self.ftHandle, flowControl, xon, x_off)
+            self._d2xx.FT_SetFlowControl(self._ft_handle, flowControl, xon, x_off)
         )
         baud_rate = ctypes.c_uint64(9600)
-        Ftd2xxhelper.__check(self.d2xx.FT_SetBaudRate(self.ftHandle, baud_rate))
+        Ftd2xxhelper.__check(self._d2xx.FT_SetBaudRate(self._ft_handle, baud_rate))
         timeout = ctypes.c_uint64(1000)
-        Ftd2xxhelper.__check(self.d2xx.FT_SetTimeouts(self.ftHandle, timeout, timeout))
+        Ftd2xxhelper.__check(self._d2xx.FT_SetTimeouts(self._ft_handle, timeout, timeout))
         mask = ctypes.c_ubyte(0x00)
         enable = ctypes.c_ubyte(0x40)
-        Ftd2xxhelper.__check(self.d2xx.FT_SetBitMode(self.ftHandle, mask, enable))
+        Ftd2xxhelper.__check(self._d2xx.FT_SetBitMode(self._ft_handle, mask, enable))
 
     def open_usb_connection(self):
         self.initialize()
 
     def close_usb_connection(self):
-        if self.ftHandle is not None:
-            self.d2xx.FT_Close(self.ftHandle)
-            self.ftHandle = None
+        if self._ft_handle is not None:
+            self._d2xx.FT_Close(self._ft_handle)
+            self._ft_handle = None
 
     def disconnect(self):
         self.close_usb_connection()
@@ -254,11 +271,11 @@ class Ftd2xxhelper(object):
         except ValueError:
             command = command + self.terminator
 
-        if self.ftHandle is None:
-            self.ftHandle = ctypes.c_void_p()
+        if self._ft_handle is None:
+            self._ft_handle = ctypes.c_void_p()
             Ftd2xxhelper.__check(
-                self.d2xx.FT_OpenEx(
-                    self.lastConnectedSerialNumber, 1, ctypes.byref(self.ftHandle)
+                self._d2xx.FT_OpenEx(
+                    self._last_connected_serial_number, 1, ctypes.byref(self._ft_handle)
                 )
             )
 
@@ -266,16 +283,16 @@ class Ftd2xxhelper(object):
         commandLen = len(command)
         cmd = (ctypes.c_ubyte * commandLen).from_buffer_copy(command.encode("ascii"))
         Ftd2xxhelper.__check(
-            self.d2xx.FT_Write(self.ftHandle, cmd, commandLen, ctypes.byref(written))
+            self._d2xx.FT_Write(self._ft_handle, cmd, commandLen, ctypes.byref(written))
         )
         time.sleep(0.020)
 
     def read(self, maxTimeToWait: float = 0.020, totalNumberOfBytesToRead: int = 0):
-        if self.ftHandle is None:
-            self.ftHandle = ctypes.c_void_p()
+        if self._ft_handle is None:
+            self._ft_handle = ctypes.c_void_p()
             Ftd2xxhelper.__check(
-                self.d2xx.FT_OpenEx(
-                    self.lastConnectedSerialNumber, 1, ctypes.byref(self.ftHandle)
+                self._d2xx.FT_OpenEx(
+                    self._last_connected_serial_number, 1, ctypes.byref(self._ft_handle)
                 )
             )
 
@@ -291,7 +308,7 @@ class Ftd2xxhelper(object):
             timeCounter += sleepTimer
             time.sleep(sleepTimer)
             Ftd2xxhelper.__check(
-                self.d2xx.FT_GetQueueStatus(self.ftHandle, ctypes.byref(available))
+                self._d2xx.FT_GetQueueStatus(self._ft_handle, ctypes.byref(available))
             )
             if available.value > 0:
                 read = True
@@ -302,8 +319,8 @@ class Ftd2xxhelper(object):
                     continue
             arr = (ctypes.c_ubyte * available.value)()
             Ftd2xxhelper.__check(
-                self.d2xx.FT_Read(
-                    self.ftHandle, arr, available, ctypes.byref(bytesRead)
+                self._d2xx.FT_Read(
+                    self._ft_handle, arr, available, ctypes.byref(bytesRead)
                 )
             )
             buf = bytearray(arr)
@@ -324,11 +341,11 @@ class Ftd2xxhelper(object):
         return self.query("*IDN?")
 
     def query(self, command: str, waitTime: int = 1):
-        if self.ftHandle is None:
-            self.ftHandle = ctypes.c_void_p()
+        if self._ft_handle is None:
+            self._ft_handle = ctypes.c_void_p()
             Ftd2xxhelper.__check(
-                self.d2xx.FT_OpenEx(
-                    self.lastConnectedSerialNumber, 1, ctypes.byref(self.ftHandle)
+                self._d2xx.FT_OpenEx(
+                    self._last_connected_serial_number, 1, ctypes.byref(self._ft_handle)
                 )
             )
 
