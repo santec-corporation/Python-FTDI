@@ -2,12 +2,6 @@
 <p align="right"> <a href="https://www.santec.com/jp/" target="_blank" rel="noreferrer"> <img src="https://www.santec.com/dcms_media/image/common_logo01.png" alt="santec" 
   width="250" height="45"/> </a> </p>
 
-> [!WARNING]  
-> The repo is a work in progress.
-
-> [!CAUTION]
-> Do not use this repo for your personal use.
-
 <h1 align="left"> Santec Python FTDI </h1>
 Pure python backend script to control Santec instruments via USB. 
 
@@ -17,12 +11,11 @@ Pure python backend script to control Santec instruments via USB.
 
 1) Import the ftd2xxhelper file in your main program,
    ```python
-   import ftd2xxhelper
+   from ftd2xxhelper import Ftd2xxhelper
    ```
 2) List of detected devices,
    ```python
    list_of_devices = Ftd2xxhelper.list_devices()
-   print(list_of_devices)
    ```
     
 3) Printing each device's properties,
@@ -35,7 +28,13 @@ Pure python backend script to control Santec instruments via USB.
 4) Creating a device control instance,
    ```python
    # Here parameter is the Serial number of the instrument in result_str format
-   device = Ftd2xxhelper("SerialNumber")        # Instrument Serial Number Example = 23110980, 20208978, 21862492
+   device = Ftd2xxhelper(list_of_devices[0].SerialNumber)  
+   
+   or
+   
+   serial_number = 23110067     # Here, serial_number is the instrument serial number, Example = 23110980, 20208978, 21862492
+   serial_number_in_byte = str(serial_number).encode('utf-8')
+   device = Ftd2xxhelper(serial_number_in_byte) 
    ```    
 
 5) To get the device identification string,
