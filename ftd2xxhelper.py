@@ -370,7 +370,10 @@ class Ftd2xxhelper(object):
         if result_str[0] == "\0":
             return result_str
 
-        if result_str[0] not in result_str.hexdigits or result_str[1] not in result_str.hexdigits:
+        # if result_str[0] not in result_str.hexdigits or result_str[1] not in result_str.hexdigits:
+        #     return result_str[2:]
+
+        if result_str[0] not in string.hexdigits or result_str[1] not in string.hexdigits:
             return result_str[2:]
 
         return result_str
