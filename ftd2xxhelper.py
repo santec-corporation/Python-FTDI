@@ -9,6 +9,18 @@ import string
 from ctypes import Array
 from typing import List, Any
 
+# Setup logging
+import logging
+
+# # Configure the logging
+# logging.basicConfig(
+#     filename='output.log',  # Name of the log file
+#     filemode='a',
+#     format='%(asctime)s - %(levelname)s - %(message)s',  # Log format
+#     level=None  # Set the logging level
+# )
+logging.disable()
+
 
 class FtNode(ctypes.Structure):
     _fields_ = [
@@ -53,30 +65,40 @@ class Ftd2xxhelper(object):
     ]
 
     def __init__(self, serial_number: str | bytes | None = None):
+        logging.info(f"Ftd2xxhelper class initialized. Serial number: {serial_number}")
         self._selected_device_node = None
         self._last_connected_serial_number = None
         self._ft_handle = None
         self._num_devices = None
         self._ftdi_device_list = None
         self._d2xx = None
+        logging.info("Ftd2xxhelper class properties set to None.")
 
-        self.load_library()
+        self._d2xx = self.load_library()
+        logging.info(f"Loaded library: {self._d2xx}.")
         if serial_number is not None:
             self.initialize(serial_number)
 
-    def load_library(self):
+    @staticmethod
+    def load_library():
+        logging.info("Loading libraries")
         try:
             if sys.platform.startswith("linux"):
-                self._d2xx = ctypes.cdll.LoadLibrary("libftd2xx.so")
+                logging.info("Loading libftd2xx.so library")
+                return ctypes.cdll.LoadLibrary("libftd2xx.so")
             elif sys.platform.startswith("darwin"):
-                self._d2xx = ctypes.cdll.LoadLibrary("libftd2xx.dylib")
+                logging.info("Loading libftd2xx.dylib library")
+                return ctypes.cdll.LoadLibrary("libftd2xx.dylib")
             else:
-                self._d2xx = ctypes.windll.LoadLibrary("ftd2xx")
+                logging.info("Loading ftd2xx library")
+                return ctypes.windll.LoadLibrary("ftd2xx")
         except OSError as e:
+            logging.error(f"Failed to load FTDI library: {e}")
             raise RuntimeError(f"Failed to load FTDI library: {e}")
 
     @staticmethod
     def __check(f):
+        logging.info(f"Performing check: {f}")
         if f != 0:
             names = [
                 "FT_OK",
@@ -99,28 +121,40 @@ class Ftd2xxhelper(object):
                 "FT_NOT_SUPPORTED",
                 "FT_OTHER_ERROR",
             ]
+            logging.error("Error: (status %d: %s)" % (f, names[f]))
             raise IOError("Error: (status %d: %s)" % (f, names[f]))
 
     @staticmethod
     def list_devices():
+        logging.error("Listing devices.")
         d2xx = None
-        if sys.platform.startswith("linux"):
-            d2xx = ctypes.cdll.LoadLibrary("libft2xx.so")
-        elif sys.platform.startswith("darwin"):
-            d2xx = ctypes.cdll.LoadLibrary("libftd2xx.dylib")
-        else:
-            d2xx = ctypes.windll.LoadLibrary("ftd2xx")
+        try:
+            if sys.platform.startswith("linux"):
+                logging.info("Loading libftd2xx.so library")
+                d2xx = ctypes.cdll.LoadLibrary("libftd2xx.so")
+            elif sys.platform.startswith("darwin"):
+                logging.info("Loading libftd2xx.dylib library")
+                d2xx = ctypes.cdll.LoadLibrary("libftd2xx.dylib")
+            else:
+                logging.info("Loading ftd2xx library")
+                d2xx = ctypes.windll.LoadLibrary("ftd2xx")
+        except OSError as e:
+            logging.error(f"Failed to load FTDI library: {e}")
+            raise RuntimeError(f"Failed to load FTDI library: {e}")
+        logging.info(f"Loaded library: {d2xx}.")
         if d2xx is None:
             return []
         numDevs = ctypes.c_long()
         Ftd2xxhelper.__check(d2xx.FT_CreateDeviceInfoList(ctypes.byref(numDevs)))
         ftdiDeviceList = []
+        logging.info(f"Device num: {numDevs}")
         if numDevs.value > 0:
             t_devices = FtNode * numDevs.value
             devices = t_devices()
             Ftd2xxhelper.__check(
                 d2xx.FT_GetDeviceInfoList(devices, ctypes.byref(numDevs))
             )
+            logging.info(f"Devices: {devices}")
             for device in devices:
                 ftHandle = ctypes.c_void_p()
                 Ftd2xxhelper.__check(
@@ -139,18 +173,23 @@ class Ftd2xxhelper(object):
                         d2xx.FT_EE_Read(ftHandle, ctypes.byref(eeprom))
                     )
                     manufacturer = ctypes.cast(eeprom.Manufacturer, ctypes.c_char_p)
+                    logging.info(str(manufacturer.value.decode("ascii").upper()))
                     if manufacturer.value.decode("ascii").upper() == "SANTEC":
                         ftdiDeviceList.append(device)
                 finally:
+                    logging.info("FT Close.")
                     d2xx.FT_Close(ftHandle)
+            logging.info(f"FTDI device list: {ftdiDeviceList}")
             return ftdiDeviceList
         else:
             return []
 
     def get_dev_info_list(self) -> Array[FtNode] | list[Any]:
+        logging.info("Getting device info list.")
         numDevs = ctypes.c_long()
         Ftd2xxhelper.__check(self._d2xx.FT_CreateDeviceInfoList(ctypes.byref(numDevs)))
         self._num_devices = numDevs.value
+        logging.info(f"numDevs value: {self._num_devices}")
         if numDevs.value > 0:
             t_devices = FtNode * numDevs.value
             devices = t_devices()
@@ -158,11 +197,15 @@ class Ftd2xxhelper(object):
                 self._d2xx.FT_GetDeviceInfoList(devices, ctypes.byref(numDevs))
             )
             self._ftdi_device_list = devices
+            logging.info(f"Device info list: {devices}")
             return devices
         else:
+            logging.info(f"Returning empty device info list.")
             return []
 
     def eeprom_data(self):
+        logging.info("Eeprom data method.")
+        logging.info(f"Selected device node: {self._selected_device_node}")
         if self._selected_device_node is None:
             return None
 
@@ -174,21 +217,25 @@ class Ftd2xxhelper(object):
         eeprom.ManufacturerId = ctypes.create_string_buffer(16)
         eeprom.Description = ctypes.create_string_buffer(64)
         eeprom.SerialNumber = ctypes.create_string_buffer(16)
+        logging.info(f"Eeprom: {eeprom}")
 
         try:
             Ftd2xxhelper.__check(
                 self._d2xx.FT_EE_Read(self._ft_handle, ctypes.byref(eeprom))
             )
+            logging.info(f"Eeprom: {eeprom}")
             return eeprom
-        except:
+        except Exception as e:
+            logging.error("Exception, ", e)
             return None
 
     def initialize(self, serialNumber: str | bytes | None = None):
+        logging.info(f"Initializing device, Serial number: {serialNumber}")
         devs = self.get_dev_info_list()
+        logging.info(f"Devices len: {len(devs)}, devices: {devs}")
 
         self._selected_device_node = None
         self._last_connected_serial_number = None
-
 
         if serialNumber is None:
             for dev in devs:
@@ -207,7 +254,9 @@ class Ftd2xxhelper(object):
                     break
         if self._selected_device_node is None:
             if serialNumber is None:
+                logging.error("Value error, Failed to find Santec instruments")
                 raise ValueError("Failed to find Santec instruments")
+            logging.error(f"Value error, Failed to open device by serial number '{serialNumber}'")
             raise ValueError(f"Failed to open device by serial number '{serialNumber}'")
         self._ft_handle = ctypes.c_void_p()
         Ftd2xxhelper.__check(
@@ -217,15 +266,22 @@ class Ftd2xxhelper(object):
         )
 
         eeprom = self.eeprom_data()
+        logging.info(f"Eeprom: {eeprom}")
         if eeprom is None:
+            logging.error(f"Run time error, Failed to retrieve EEPROM data from the device "
+                          f"(SN: {self._last_connected_serial_number}, "
+                          f"Description: {self._selected_device_node.Description})")
             raise RuntimeError(
-                f"Failed to retrieve EEPROM data from the device (SN: {self._last_connected_serial_number}, Description: {self._selected_device_node.Description})"
+                f"Failed to retrieve EEPROM data from the device (SN: {self._last_connected_serial_number}, "
+                f"Description: {self._selected_device_node.Description})"
             )
         manufacturer = ctypes.cast(eeprom.Manufacturer, ctypes.c_char_p)
         if manufacturer.value.decode("ascii").upper() == "SANTEC":
             self.__initialize()
+        logging.info("\nInitialization done.")
 
     def __initialize(self):
+        logging.info("__initialize operation.")
         word_len = ctypes.c_ubyte(8)
         stop_bits = ctypes.c_ubyte(0)
         parity = ctypes.c_ubyte(0)
@@ -247,29 +303,40 @@ class Ftd2xxhelper(object):
         mask = ctypes.c_ubyte(0x00)
         enable = ctypes.c_ubyte(0x40)
         Ftd2xxhelper.__check(self._d2xx.FT_SetBitMode(self._ft_handle, mask, enable))
+        logging.info("__initialize operation done.")
 
     def open_usb_connection(self):
+        logging.info("Open USB connection.")
         self.initialize()
 
     def close_usb_connection(self):
+        logging.info(f"Closing USB connection, FT Handle: {self._ft_handle}")
         if self._ft_handle is not None:
             self._d2xx.FT_Close(self._ft_handle)
             self._ft_handle = None
 
     def disconnect(self):
+        logging.info("Disconnect device.")
         self.close_usb_connection()
 
     def write(self, command: str):
+        # logging.info(f"Write operation, command: {command}")
         try:
             idx = command.index(self.terminator)
+            # logging.info(f"Idx: {idx}")
             if idx == 0:
+                logging.error("Value error, The first character of the write command cannot be the command terminator")
                 raise ValueError(
                     "The first character of the write command cannot be the command terminator"
                 )
             elif not command.endswith(self.terminator):
                 command = command[:idx]
-        except ValueError:
+                logging.info(f"command: {command}")
+        except ValueError as e:
+            logging.error("Value error, ", e)
             command = command + self.terminator
+            logging.info(f"command: {command}")
+            logging.info(f"FT handle: {self._ft_handle}")
 
         if self._ft_handle is None:
             self._ft_handle = ctypes.c_void_p()
@@ -282,12 +349,15 @@ class Ftd2xxhelper(object):
         written = ctypes.c_uint()
         commandLen = len(command)
         cmd = (ctypes.c_ubyte * commandLen).from_buffer_copy(command.encode("ascii"))
+        logging.info(f"cmd: {cmd}")
         Ftd2xxhelper.__check(
             self._d2xx.FT_Write(self._ft_handle, cmd, commandLen, ctypes.byref(written))
         )
         time.sleep(0.020)
 
     def read(self, maxTimeToWait: float = 0.020, totalNumberOfBytesToRead: int = 0):
+        logging.info(
+            f"Read operation, maxTimeToWait: {maxTimeToWait}, totalNumberOfBytesToRead: {totalNumberOfBytesToRead}, FT handle: {self._ft_handle}")
         if self._ft_handle is None:
             self._ft_handle = ctypes.c_void_p()
             Ftd2xxhelper.__check(
@@ -302,45 +372,52 @@ class Ftd2xxhelper(object):
         binaryData = bytearray()
         read = False
 
-        while timeCounter < maxTimeToWait:
-            bytesRead = ctypes.c_uint()
-            available = ctypes.c_uint()
-            timeCounter += sleepTimer
-            time.sleep(sleepTimer)
-            Ftd2xxhelper.__check(
-                self._d2xx.FT_GetQueueStatus(self._ft_handle, ctypes.byref(available))
-            )
-            if available.value > 0:
-                read = True
-            elif available.value == 0:
-                if read:
-                    break
-                else:
-                    continue
-            arr = (ctypes.c_ubyte * available.value)()
-            Ftd2xxhelper.__check(
-                self._d2xx.FT_Read(
-                    self._ft_handle, arr, available, ctypes.byref(bytesRead)
+        try:
+            while timeCounter < maxTimeToWait:
+                bytesRead = ctypes.c_uint()
+                available = ctypes.c_uint()
+                timeCounter += sleepTimer
+                time.sleep(sleepTimer)
+                Ftd2xxhelper.__check(
+                    self._d2xx.FT_GetQueueStatus(self._ft_handle, ctypes.byref(available))
                 )
-            )
-            buf = bytearray(arr)
-            binaryData.extend(buf)
+                if available.value > 0:
+                    read = True
+                elif available.value == 0:
+                    if read:
+                        break
+                    else:
+                        continue
+                arr = (ctypes.c_ubyte * available.value)()
+                Ftd2xxhelper.__check(
+                    self._d2xx.FT_Read(
+                        self._ft_handle, arr, available, ctypes.byref(bytesRead)
+                    )
+                )
+                buf = bytearray(arr)
+                binaryData.extend(buf)
 
-            if bytesRead.value > 0:
-                timeCounter = 0
+                if bytesRead.value > 0:
+                    timeCounter = 0
 
-            if (
-                    0 < totalNumberOfBytesToRead <= len(binaryData)
-            ):
-                break
+                if (
+                        0 < totalNumberOfBytesToRead <= len(binaryData)
+                ):
+                    break
+        except RuntimeError as e:
+            logging.error("Run time error: ", e)
+            raise RuntimeError(e)
 
-        self.close_usb_connection()
+        # self.close_usb_connection()
+        logging.info(f"Binary data: {binaryData}")
         return binaryData
 
     def query_idn(self):
+        logging.info("Query Idn")
         return self.query("*IDN?")
 
     def query(self, command: str, waitTime: int = 1):
+        logging.info(f"Query operation, command: {command}, wait time: {waitTime}")
         if self._ft_handle is None:
             self._ft_handle = ctypes.c_void_p()
             Ftd2xxhelper.__check(
@@ -356,7 +433,9 @@ class Ftd2xxhelper(object):
         response_str = ""
         try:
             response_str = arr.decode("ascii")
+            logging.info(f"Response str: {response_str}")
         except UnicodeDecodeError:
+            logging.error(f"UnicodeDecodeError, {response_str}, ", arr)
             print(arr)
             return response_str
 
@@ -366,12 +445,16 @@ class Ftd2xxhelper(object):
             return response_str
 
         trimmed = self.__remove_prefix_from_result_if_not_hex(response_str.strip())
+        logging.info(f"Trimmed response str: {trimmed}")
 
         try:
             idx = trimmed.rindex(self.terminator)
+            logging.info(f"Idx: {idx}")
             if len(trimmed) - 2 > idx:
                 trimmed = trimmed[(idx + 1):].strip()
-        except ValueError:
+                logging.info(f"Trimmed: {trimmed}")
+        except ValueError as e:
+            logging.error("value error, ", e)
             pass
 
         if trimmed == response_str.strip():
@@ -381,6 +464,7 @@ class Ftd2xxhelper(object):
 
     @staticmethod
     def __remove_prefix_from_result_if_not_hex(result_str: str):
+        logging.info(f"Remove prefix from result if not hex, result str: {result_str}, len: {len(result_str)}")
         if result_str is None or len(result_str) < 3:
             return result_str
 
@@ -393,9 +477,11 @@ class Ftd2xxhelper(object):
         if result_str[0] not in string.hexdigits or result_str[1] not in string.hexdigits:
             return result_str[2:]
 
+        logging.info(f"Result str: {result_str}, len: {len(result_str)}")
         return result_str
 
-    def get_all_dat_points_from_last_scan_scpi_command(self):
+    def get_all_data_points_from_last_scan_scpi_command(self):
+        logging.info("Get all data points from last scan using SCPI command.")
         getCountCommand = "READout:POINts?"
         getDataCommand = "READout:DATa?"
 
@@ -453,6 +539,7 @@ class Ftd2xxhelper(object):
         )
 
     def get_all_data_points_from_last_scan_santec_command(self):
+        logging.info("Get all data points from last scan using Santec command.")
         getCountCommand = "TN"
         getDataCommand = "TA"
 
@@ -482,5 +569,6 @@ class Ftd2xxhelper(object):
 
     @staticmethod
     def __chunks(arr: bytearray, length: int, n: int = 4):
+        logging.info(f"Chunks, arr:{arr}, length: {length}, n: {n}")
         for i in range(0, length):
             yield arr[i * n: i * n + n]
