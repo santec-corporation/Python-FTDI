@@ -2,65 +2,63 @@
 <p align="right"> <a href="https://www.santec.com/jp/" target="_blank" rel="noreferrer"> <img src="https://www.santec.com/dcms_media/image/common_logo01.png" alt="santec" 
   width="250" height="45"/> </a> </p>
 
-<h1 align="left"> Santec Python FTDI </h1>
-Pure python backend script to control Santec instruments via USB. 
-
-<br> 
+<h1 align="left"> Python FTDI </h1>
+Python script for controlling Santec instruments via a USB connection. <br><br>
 
 <h2>Usage</h2>
 
-1) Import the ftd2xxhelper file in your main program,
+1) Import the Ftd2xxhelper class from ftd2xxhelper,
    ```python
    from ftd2xxhelper import Ftd2xxhelper
    ```
-2) List of detected devices,
+2) Call the list_devices method,
    ```python
-   list_of_devices = Ftd2xxhelper.list_devices()
+   list_of_devices = Ftd2xxhelper.list_devices()      # Gets the list of detected USB connections
    ```
     
-3) Printing each device's properties,
+3) Print the description and serial number of each detected device,
    ```python
    for device in list_of_devices:
       print(device.Description)
       print(device.SerialNumber)
    ```          
    
-4) Creating a device control instance,
-   ```python
-   # Here parameter is the Serial number of the instrument in result_str format
-   device = Ftd2xxhelper(list_of_devices[0].SerialNumber)  
+4) Creating a device control instance / object,
+   ```python   
+   device = Ftd2xxhelper(list_of_devices[0].SerialNumber)
    
-   or
-   
-   serial_number = 23110067     # Here, serial_number is the instrument serial number, Example = 23110980, 20208978, 21862492
-   serial_number_in_byte = str(serial_number).encode('utf-8')
-   device = Ftd2xxhelper(serial_number_in_byte) 
+   (or)
+       
+   serial_number = str(MY_SERIAL_NUMBER).encode('utf-8')      # Here, MY_SERIAL_NUMBER is the Serial number of the instrument, Example = 23110980, 21862492
+   device = Ftd2xxhelper(serial_number)
    ```    
 
-5) To get the device identification string,
+5) Print the device identification string,
    ```python
-   idn_query = device.query_idn()                 # Output: SANTEC INS-(ModelNumber), SerialNumber, VersionNumber
-   print(idn_query)
+   idn_query = device.query_idn()     
+   print(idn_query)       # Output: SANTEC TSL-570, 23119807, 0029.0067.0001
    ```
 
-6) To write a command,
+6) Write a command,
    ```python
-   device.write('command')                       # refer to the instrument datasheet for commands
+   device.write('YOUR_COMMAND')      # Refer to the instrument manual for commands
    ```
 
-7) To query a command,
+7) Query a command,
    ```python
-   result = device.query('command')              # refer to the instrument datasheet for commands
+   result = device.query('YOUR_COMMAND')      # Refer to the instrument manual for commands
    print(result)
+   
    ```
-   ❗ If the above method does not work, then instead use the Write() followed by Read() method as shown below,
+   ❗ If the query() method is not functional, you can instead use the write() method followed by calling the read() method, as shown below,
    ```python
-   device.write('command')                       # refer to the instrument datasheet for commands
-   result = device.read()            
+   device.write('YOUR_COMMAND')      # Refer to the instrument manual for commands
+   result = device.read()              
    print(result)
    ```   
   
-8) Closing the device's usb connection after use. Any future commands sent will throw an exception, as the connection is already closed,
+8) Disposing the usb connection after use.
    ```python
    device.close_usb_connection()
    ```
+   
