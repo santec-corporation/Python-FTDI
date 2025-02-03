@@ -1,5 +1,4 @@
-import pytest
-from ftd2xxhelper import Ftd2xxhelper
+from src.ftd2xxhelper import Ftd2xxhelper
 
 serial_number = 23110067
 serial_number_to_byte = str(serial_number).encode('utf-8')

@@ -1,5 +1,4 @@
-import pytest
-from ftd2xxhelper import Ftd2xxhelper
+from src.ftd2xxhelper import Ftd2xxhelper
 
 devices = Ftd2xxhelper.list_devices()
 

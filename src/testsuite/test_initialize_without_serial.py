@@ -1,5 +1,4 @@
-import pytest
-from ftd2xxhelper import Ftd2xxhelper
+from src.ftd2xxhelper import Ftd2xxhelper
 
 
 def test_initialize_without_serial():
