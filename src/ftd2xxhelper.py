@@ -284,11 +284,11 @@ class Ftd2xxhelper(object):
             )
         manufacturer = ctypes.cast(eeprom.Manufacturer, ctypes.c_char_p)
         if manufacturer.value.decode("ascii").upper() == "SANTEC":
-            self.__initialize()
+            self._initialize()
         logging.info("\nInitialization done.")
 
-    def __initialize(self):
-        logging.info("Start __initialize operation.")
+    def _initialize(self):
+        logging.info("Start _initialize operation.")
         word_len = ctypes.c_ubyte(8)
         stop_bits = ctypes.c_ubyte(0)
         parity = ctypes.c_ubyte(0)
@@ -310,7 +310,7 @@ class Ftd2xxhelper(object):
         mask = ctypes.c_ubyte(0x00)
         enable = ctypes.c_ubyte(0x40)
         Ftd2xxhelper.__check(self._d2xx.FT_SetBitMode(self._ft_handle, mask, enable))
-        logging.info("__initialize operation done.")
+        logging.info("_initialize operation done.")
 
     def open_usb_connection(self):
         logging.info("Open USB connection.")
