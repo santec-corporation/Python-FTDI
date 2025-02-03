@@ -5,8 +5,8 @@
 Python script to control Santec Instruments via FTDI USB.
 
 Organization: santec holdings corp.
-Version: 0.2.0
-Last updated: Mon Feb 03 17:38:37 2025
+Version: 0.2.1
+Last updated: Mon Feb 03 18:08:00 2025
 """
 
 import sys
@@ -88,20 +88,78 @@ class Ftd2xxhelper(object):
 
     @staticmethod
     def load_library():
-        logging.info("Loading libraries")
+        """Loads the FTDI D2XX library based on OS."""
+        logging.info("Loading FTDI library")
         try:
             if sys.platform.startswith("linux"):
-                logging.info("Loading libftd2xx.so library")
-                return ctypes.cdll.LoadLibrary("libftd2xx.so")
+                lib_name = "libftd2xx.so"
             elif sys.platform.startswith("darwin"):
-                logging.info("Loading libftd2xx.dylib library")
-                return ctypes.cdll.LoadLibrary("libftd2xx.dylib")
+                lib_name = "libftd2xx.dylib"
             else:
-                logging.info("Loading ftd2xx library")
-                return ctypes.windll.LoadLibrary("ftd2xx")
+                lib_name = "ftd2xx"
+
+            logging.info(f"Attempting to load: {lib_name}")
+            return ctypes.cdll.LoadLibrary(lib_name) \
+                if sys.platform.startswith("linux") or sys.platform.startswith("darwin") \
+                else ctypes.windll.LoadLibrary(lib_name)
         except OSError as e:
             logging.error(f"Failed to load FTDI library: {e}")
             raise RuntimeError(f"Failed to load FTDI library: {e}")
+
+    @staticmethod
+    def list_devices():
+        """Lists connected FTDI devices and filters by manufacturer 'SANTEC'."""
+        logging.info("Listing FTDI devices...")
+        try:
+            d2xx = Ftd2xxhelper.load_library()
+        except RuntimeError as e:
+            logging.error(f"Library load failed: {e}")
+            return []
+
+        numDevs = ctypes.c_long()
+        if d2xx.FT_CreateDeviceInfoList(ctypes.byref(numDevs)) != 0:
+            logging.error("Failed to create FTDI device list")
+            return []
+
+        logging.info(f"Number of FTDI devices detected: {numDevs.value}")
+        if numDevs.value <= 0:
+            return []
+
+        t_devices = FtNode * numDevs.value
+        devices = t_devices()
+        if d2xx.FT_GetDeviceInfoList(devices, ctypes.byref(numDevs)) != 0:
+            logging.error("Failed to retrieve FTDI device list")
+            return []
+
+        ftdiDeviceList = []
+        for device in devices:
+            ftHandle = ctypes.c_void_p()
+            if d2xx.FT_OpenEx(device.SerialNumber, 1, ctypes.byref(ftHandle)) != 0:
+                logging.error(f"Failed to open FTDI device: {device.SerialNumber}")
+                continue
+
+            eeprom = FtProgramData()
+            eeprom.Signature1 = 0x00000000
+            eeprom.Signature2 = 0xFFFFFFFF
+            eeprom.Version = 2
+            eeprom.Manufacturer = ctypes.create_string_buffer(32)
+            eeprom.ManufacturerId = ctypes.create_string_buffer(16)
+            eeprom.Description = ctypes.create_string_buffer(64)
+            eeprom.SerialNumber = ctypes.create_string_buffer(16)
+
+            try:
+                if d2xx.FT_EE_Read(ftHandle, ctypes.byref(eeprom)) == 0:
+                    manufacturer = ctypes.cast(eeprom.Manufacturer, ctypes.c_char_p).value
+                    if manufacturer:
+                        manufacturer_name = manufacturer.decode("ascii", errors="ignore").upper()
+                        logging.info(f"Manufacturer: {manufacturer_name}")
+                        if manufacturer_name == "SANTEC":
+                            ftdiDeviceList.append(device)
+            finally:
+                d2xx.FT_Close(ftHandle)
+
+        logging.info(f"Filtered FTDI device list: {ftdiDeviceList}")
+        return ftdiDeviceList
 
     @staticmethod
     def __check(f):
@@ -130,66 +188,6 @@ class Ftd2xxhelper(object):
             ]
             logging.error("Error: (status %d: %s)" % (f, names[f]))
             raise IOError("Error: (status %d: %s)" % (f, names[f]))
-
-    @staticmethod
-    def list_devices():
-        logging.error("Listing devices.")
-        d2xx = None
-        try:
-            if sys.platform.startswith("linux"):
-                logging.info("Loading libftd2xx.so library")
-                d2xx = ctypes.cdll.LoadLibrary("libftd2xx.so")
-            elif sys.platform.startswith("darwin"):
-                logging.info("Loading libftd2xx.dylib library")
-                d2xx = ctypes.cdll.LoadLibrary("libftd2xx.dylib")
-            else:
-                logging.info("Loading ftd2xx library")
-                d2xx = ctypes.windll.LoadLibrary("ftd2xx")
-        except OSError as e:
-            logging.error(f"Failed to load FTDI library: {e}")
-            raise RuntimeError(f"Failed to load FTDI library: {e}")
-        # logging.info(f"Loaded library: {d2xx}.")
-        if d2xx is None:
-            return []
-        numDevs = ctypes.c_long()
-        Ftd2xxhelper.__check(d2xx.FT_CreateDeviceInfoList(ctypes.byref(numDevs)))
-        ftdiDeviceList = []
-        logging.info(f"Device num: {numDevs}")
-        if numDevs.value > 0:
-            t_devices = FtNode * numDevs.value
-            devices = t_devices()
-            Ftd2xxhelper.__check(
-                d2xx.FT_GetDeviceInfoList(devices, ctypes.byref(numDevs))
-            )
-            logging.info(f"Devices: {devices}")
-            for device in devices:
-                ftHandle = ctypes.c_void_p()
-                Ftd2xxhelper.__check(
-                    d2xx.FT_OpenEx(device.SerialNumber, 1, ctypes.byref(ftHandle))
-                )
-                eeprom = FtProgramData()
-                eeprom.Signature1 = 0x00000000
-                eeprom.Signature2 = 0xFFFFFFFF
-                eeprom.Version = 2
-                eeprom.Manufacturer = ctypes.create_string_buffer(32)
-                eeprom.ManufacturerId = ctypes.create_string_buffer(16)
-                eeprom.Description = ctypes.create_string_buffer(64)
-                eeprom.SerialNumber = ctypes.create_string_buffer(16)
-                try:
-                    Ftd2xxhelper.__check(
-                        d2xx.FT_EE_Read(ftHandle, ctypes.byref(eeprom))
-                    )
-                    manufacturer = ctypes.cast(eeprom.Manufacturer, ctypes.c_char_p)
-                    logging.info(str(manufacturer.value.decode("ascii").upper()))
-                    if manufacturer.value.decode("ascii").upper() == "SANTEC":
-                        ftdiDeviceList.append(device)
-                finally:
-                    logging.info("FT Close.")
-                    d2xx.FT_Close(ftHandle)
-            logging.info(f"FTDI device list: {ftdiDeviceList}")
-            return ftdiDeviceList
-        else:
-            return []
 
     def get_dev_info_list(self) -> Array[FtNode] | list[Any]:
         logging.info("Getting device info list.")
