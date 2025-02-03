@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 # !/usr/bin/env python
 
+"""
+Python script to control Santec Instruments via FTDI USB.
+
+Organization: santec holdings corp.
+Version: 0.2.0
+Last updated: Mon Feb 03 17:38:37 2025
+"""
+
 import sys
 import time
 import ctypes
@@ -12,14 +20,13 @@ from typing import List, Any
 # Setup logging
 import logging
 
-# # Configure the logging
-# logging.basicConfig(
-#     filename='output.log',  # Name of the log file
-#     filemode='a',
-#     format='%(asctime)s - %(levelname)s - %(message)s',  # Log format
-#     level=None  # Set the logging level
-# )
-logging.disable()
+# Configure the logging
+logging.basicConfig(
+    filename='output_python_ftdi.log',  # Name of the log file
+    filemode='a',
+    format='%(asctime)s - %(levelname)s - %(message)s',  # Log format
+    level=logging.DEBUG  # Set the logging level
+)
 
 
 class FtNode(ctypes.Structure):
@@ -75,7 +82,7 @@ class Ftd2xxhelper(object):
         logging.info("Ftd2xxhelper class properties set to None.")
 
         self._d2xx = self.load_library()
-        logging.info(f"Loaded library: {self._d2xx}.")
+        # logging.info(f"Loaded library: {self._d2xx}.")
         if serial_number is not None:
             self.initialize(serial_number)
 
@@ -141,7 +148,7 @@ class Ftd2xxhelper(object):
         except OSError as e:
             logging.error(f"Failed to load FTDI library: {e}")
             raise RuntimeError(f"Failed to load FTDI library: {e}")
-        logging.info(f"Loaded library: {d2xx}.")
+        # logging.info(f"Loaded library: {d2xx}.")
         if d2xx is None:
             return []
         numDevs = ctypes.c_long()
@@ -205,7 +212,7 @@ class Ftd2xxhelper(object):
 
     def eeprom_data(self):
         logging.info("Eeprom data method.")
-        logging.info(f"Selected device node: {self._selected_device_node}")
+        # logging.info(f"Selected device node: {self._selected_device_node}")
         if self._selected_device_node is None:
             return None
 
@@ -217,16 +224,16 @@ class Ftd2xxhelper(object):
         eeprom.ManufacturerId = ctypes.create_string_buffer(16)
         eeprom.Description = ctypes.create_string_buffer(64)
         eeprom.SerialNumber = ctypes.create_string_buffer(16)
-        logging.info(f"Eeprom: {eeprom}")
+        # logging.info(f"Eeprom: {eeprom}")
 
         try:
             Ftd2xxhelper.__check(
                 self._d2xx.FT_EE_Read(self._ft_handle, ctypes.byref(eeprom))
             )
-            logging.info(f"Eeprom: {eeprom}")
+            # logging.info(f"Eeprom: {eeprom}")
             return eeprom
         except Exception as e:
-            logging.error("Exception, ", e)
+            logging.error(f"Exception, {e}")
             return None
 
     def initialize(self, serialNumber: str | bytes | None = None):
@@ -266,7 +273,7 @@ class Ftd2xxhelper(object):
         )
 
         eeprom = self.eeprom_data()
-        logging.info(f"Eeprom: {eeprom}")
+        # logging.info(f"Eeprom: {eeprom}")
         if eeprom is None:
             logging.error(f"Run time error, Failed to retrieve EEPROM data from the device "
                           f"(SN: {self._last_connected_serial_number}, "
@@ -281,7 +288,7 @@ class Ftd2xxhelper(object):
         logging.info("\nInitialization done.")
 
     def __initialize(self):
-        logging.info("__initialize operation.")
+        logging.info("Start __initialize operation.")
         word_len = ctypes.c_ubyte(8)
         stop_bits = ctypes.c_ubyte(0)
         parity = ctypes.c_ubyte(0)
@@ -310,7 +317,7 @@ class Ftd2xxhelper(object):
         self.initialize()
 
     def close_usb_connection(self):
-        logging.info(f"Closing USB connection, FT Handle: {self._ft_handle}")
+        # logging.info(f"Closing USB connection, FT Handle: {self._ft_handle}")
         if self._ft_handle is not None:
             self._d2xx.FT_Close(self._ft_handle)
             self._ft_handle = None
@@ -320,23 +327,21 @@ class Ftd2xxhelper(object):
         self.close_usb_connection()
 
     def write(self, command: str):
-        # logging.info(f"Write operation, command: {command}")
+        logging.info(f"Write operation, command: {command}")
         try:
             idx = command.index(self.terminator)
-            # logging.info(f"Idx: {idx}")
+            logging.info(f"Idx: {idx}")
             if idx == 0:
                 logging.error("Value error, The first character of the write command cannot be the command terminator")
-                raise ValueError(
-                    "The first character of the write command cannot be the command terminator"
-                )
+                raise ValueError("The first character of the write command cannot be the command terminator")
             elif not command.endswith(self.terminator):
                 command = command[:idx]
                 logging.info(f"command: {command}")
         except ValueError as e:
-            logging.error("Value error, ", e)
+            logging.error(f"Value error, {e}")
             command = command + self.terminator
             logging.info(f"command: {command}")
-            logging.info(f"FT handle: {self._ft_handle}")
+            # logging.info(f"FT handle: {self._ft_handle}")
 
         if self._ft_handle is None:
             self._ft_handle = ctypes.c_void_p()
@@ -356,8 +361,7 @@ class Ftd2xxhelper(object):
         time.sleep(0.020)
 
     def read(self, maxTimeToWait: float = 0.020, totalNumberOfBytesToRead: int = 0):
-        logging.info(
-            f"Read operation, maxTimeToWait: {maxTimeToWait}, totalNumberOfBytesToRead: {totalNumberOfBytesToRead}, FT handle: {self._ft_handle}")
+        logging.info(f"Read operation, maxTimeToWait: {maxTimeToWait}, totalNumberOfBytesToRead: {totalNumberOfBytesToRead}")
         if self._ft_handle is None:
             self._ft_handle = ctypes.c_void_p()
             Ftd2xxhelper.__check(
@@ -405,11 +409,11 @@ class Ftd2xxhelper(object):
                 ):
                     break
         except RuntimeError as e:
-            logging.error("Run time error: ", e)
+            logging.error(f"Run time error: {e}")
             raise RuntimeError(e)
 
         # self.close_usb_connection()
-        logging.info(f"Binary data: {binaryData}")
+        # logging.info(f"Binary data: {binaryData}")
         return binaryData
 
     def query_idn(self):
@@ -435,7 +439,7 @@ class Ftd2xxhelper(object):
             response_str = arr.decode("ascii")
             logging.info(f"Response str: {response_str}")
         except UnicodeDecodeError:
-            logging.error(f"UnicodeDecodeError, {response_str}, ", arr)
+            logging.error(f"UnicodeDecodeError, {response_str}, {arr}")
             print(arr)
             return response_str
 
@@ -454,7 +458,7 @@ class Ftd2xxhelper(object):
                 trimmed = trimmed[(idx + 1):].strip()
                 logging.info(f"Trimmed: {trimmed}")
         except ValueError as e:
-            logging.error("value error, ", e)
+            logging.error(f"Value error, {e}")
             pass
 
         if trimmed == response_str.strip():
