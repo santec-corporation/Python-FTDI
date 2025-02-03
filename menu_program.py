@@ -32,8 +32,9 @@ class Santec:
         """
         command = input("\nEnter the command to Query (eg. POW ?) ").upper()
         query = self.instrument.query(f'{command}')
-        time.sleep(0.2)
         print(query)
+        time.sleep(0.25)
+        input("\nPress any key to continue...")
 
         return True
 
@@ -42,8 +43,9 @@ class Santec:
         Writes a command to the instrument inputted by the user
         """
         command = input("\nEnter the command to Write (eg. POW 1) ").upper()
-        if self.instrument.write(f'{command}'):
-            print("\nDone")
+        self.instrument.write(f'{command}')
+        print("\nCommand written.")
+        time.sleep(0.5)
 
         return True
 
@@ -52,7 +54,8 @@ class Santec:
         Instrument identification query
         """
         print(self.instrument.query_idn())
-
+        time.sleep(0.25)
+        input("\nPress any key to continue...")
         return True
 
     def close_connection(self):
@@ -61,7 +64,7 @@ class Santec:
 
     def goto_main_menu(self):
         self.close_connection()
-        time.sleep(0.1)
+        time.sleep(0.2)
         main_menu()
 
     def exit_program(self):
