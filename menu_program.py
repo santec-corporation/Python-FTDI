@@ -89,7 +89,7 @@ class Santec:
                                    "\n1. Query Instrument"
                                    "\n2. Write Instrument"
                                    "\n3. QueryIdn Instrument"
-                                   "\n4. Go back"
+                                   "\n4. Go to Instrument Connection"
                                    "\n5. Exit"
                                    "\nSelect an operation: "
                                    )
