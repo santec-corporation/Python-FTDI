@@ -11,7 +11,7 @@ import sys
 import time
 
 # Import the Ftd2xxhelper class.
-from ftd2xxhelper import Ftd2xxhelper
+from src.ftd2xxhelper import Ftd2xxhelper
 
 # List of detected devices
 try:
@@ -23,6 +23,7 @@ try:
 except Exception as e:
     print(e)
     input("Press Enter to exit...")
+    sys.exit()
 
 
 # Instrument control class
