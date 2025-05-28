@@ -14,7 +14,15 @@ import time
 from ftd2xxhelper import Ftd2xxhelper
 
 # List of detected devices
-list_of_devices = Ftd2xxhelper.list_devices()
+try:
+    list_of_devices = Ftd2xxhelper.list_devices()
+
+    if len(list_of_devices) < 1:
+        raise Exception("\nNo instruments found")
+
+except Exception as e:
+    print(e)
+    input("Press Enter to exit...")
 
 
 # Instrument control class
@@ -85,7 +93,7 @@ class Santec:
         while True:
             time.sleep(0.2)
             os.system('cls')
-            user_operation = input("\nInstrument Menu:-"                                   
+            user_operation = input("\nInstrument Menu:-"
                                    "\n1. Query Instrument"
                                    "\n2. Write Instrument"
                                    "\n3. QueryIdn Instrument"
@@ -113,15 +121,13 @@ def main_menu():
     device_list = []
 
     # Print the Name and Serial number of each detected instrument
-    if not list_of_devices:
-        print("\nNo instruments found")
-    else:
-        print("\nDetected Instruments:-")
-        for index, device in enumerate(list_of_devices, start=1):
-            if device:
-                print(f"\n{index}. Device Name: {device.Description.decode('utf-8')},  "
-                      f"Serial Number: {device.SerialNumber.decode('utf-8')}")
-                device_list.append(device.SerialNumber.decode('utf-8'))
+    print("\nDetected Instruments:-")
+    for index, device in enumerate(list_of_devices, start=1):
+        if device:
+            print(f"\n{index}. Device Name: {device.Description.decode('utf-8')},  "
+                  f"Serial Number: {device.SerialNumber.decode('utf-8')}")
+            device_list.append(device.SerialNumber.decode('utf-8'))
+
 
     # Instrument selection and the control class initialization
     while device_list:
