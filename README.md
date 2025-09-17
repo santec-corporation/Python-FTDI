@@ -50,7 +50,7 @@ Python script for controlling Santec instruments via a USB connection. <br><br>
    print(result)
    
    ```
-   ❗ If the query() method is not functional, you can instead use the write() method followed by calling the read() method, as shown below,
+   ❗If the query() method is not functional, you can instead use the write() method followed by calling the read() method, as shown below,
    ```python
    device.write('YOUR_COMMAND')      # Refer to the instrument manual for commands
    result = device.read()              
